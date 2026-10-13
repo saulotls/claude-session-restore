@@ -6,6 +6,11 @@ here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 # shellcheck source=claude-session-lib.sh
 . "$here/claude-session-lib.sh"
 
+# Drop runtime variables inherited from a parent Claude session; otherwise this
+# one is treated as a child session and does not save its transcript.
+while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep "^CLAUDE_CODE_")
+export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1
+
 id=${1:-}
 if ! csr_valid_id "$id"; then
   echo "claude-session-tab: invalid session id" >&2
