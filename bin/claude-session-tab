@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Runs inside one terminal tab: resumes a single saved session, then leaves a shell open.
+# Usage: claude-session-tab <session-id>
+set -u
+here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# shellcheck source=claude-session-lib.sh
+. "$here/claude-session-lib.sh"
+
+id=${1:-}
+if ! csr_valid_id "$id"; then
+  echo "claude-session-tab: invalid session id" >&2
+  exit 2
+fi
+
+cwd=
+state=$(csr_state_file)
+if [[ -r $state ]]; then
+  cwd=$(awk -F'\t' -v id="$id" '$1 == id {print $2; exit}' "$state")
+fi
+if csr_valid_cwd "$cwd" && [[ -d $cwd ]]; then cd "$cwd" || cd "$HOME" || exit; else cd "$HOME" || true; fi
+
+PATH="$HOME/.local/bin:$HOME/.claude/local:$HOME/.npm-global/bin:/usr/local/bin:$PATH"
+bin=${CLAUDE_BIN:-$(command -v claude || true)}
+if [[ -n $bin && -x $bin ]]; then
+  "$bin" --resume "$id"
+else
+  echo "claude-session-tab: 'claude' not found in PATH (set CLAUDE_BIN)" >&2
+fi
+
+sh=${SHELL:-/bin/bash}
+[[ -x $sh ]] || sh=/bin/sh
+exec "$sh"

@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Reopens the saved Claude Code sessions, one terminal tab (or window) per session.
+#
+# Usage: claude-restore-session [--delay SECONDS] [--terminal NAME] [--dry-run]
+#   --terminal  konsole | gnome-terminal | xfce4-terminal | kitty | tmux | alacritty |
+#               foot | xterm | wezterm | x-terminal-emulator   (default: auto-detect)
+# Env: CLAUDE_RESTORE_TERMINAL_CMD="myterm -e"  custom "one window per session" launcher
+set -u
+umask 077
+here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# shellcheck source=claude-session-lib.sh
+. "$here/claude-session-lib.sh"
+
+delay=0 term=${CLAUDE_RESTORE_TERMINAL:-} dry=0
+while (($#)); do
+  case $1 in
+    --delay) delay=${2:-}; shift 2 || { echo "--delay needs a value" >&2; exit 2; } ;;
+    --terminal) term=${2:-}; shift 2 || { echo "--terminal needs a value" >&2; exit 2; } ;;
+    --dry-run) dry=1; shift ;;
+    -h | --help) sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+[[ $delay =~ ^[0-9]{1,4}$ ]] || { echo "--delay must be a number of seconds" >&2; exit 2; }
+
+tab="$here/claude-session-tab"
+# The tab launcher path ends up inside terminal command lines; keep it free of
+# whitespace and shell/terminal metacharacters instead of trying to escape it.
+if [[ ! $tab =~ ^/[A-Za-z0-9_./+@%-]+$ ]]; then
+  echo "install path contains unsupported characters: $tab" >&2
+  exit 1
+fi
+
+state=$(csr_state_file)
+[[ -s $state ]] || { echo "nothing to restore ($state is empty or missing)" >&2; exit 0; }
+
+# Already-running sessions are skipped, so running this twice never duplicates tabs.
+running=$(csr_running_sessions | cut -f2)
+
+ids=()
+while IFS=$'\t' read -r id cwd _; do
+  csr_valid_id "${id:-}" || { echo "skipping invalid entry" >&2; continue; }
+  csr_valid_cwd "${cwd:-}" || { echo "skipping $id: invalid directory" >&2; continue; }
+  grep -qiFx -- "$id" <<< "$running" && { echo "skipping $id: already running" >&2; continue; }
+  ids+=("$id")
+done < "$state"
+
+((${#ids[@]})) || { echo "all saved sessions are already running" >&2; exit 0; }
+
+pick_terminal() {
+  local t
+  if [[ -n ${CLAUDE_RESTORE_TERMINAL_CMD:-} ]]; then echo custom; return; fi
+  if [[ -n $term ]]; then echo "$term"; return; fi
+  if [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+    for t in konsole gnome-terminal xfce4-terminal kitty wezterm alacritty foot xterm x-terminal-emulator; do
+      command -v "$t" > /dev/null 2>&1 && { echo "$t"; return; }
+    done
+  fi
+  command -v tmux > /dev/null 2>&1 && { echo tmux; return; }
+  return 1
+}
+term=$(pick_terminal) || { echo "no supported terminal found (use --terminal or CLAUDE_RESTORE_TERMINAL_CMD)" >&2; exit 1; }
+if [[ $term != custom ]] && ! [[ $term =~ ^[A-Za-z0-9._-]+$ ]]; then echo "invalid terminal name" >&2; exit 2; fi
+if [[ $term != custom && $term != tmux ]]; then
+  command -v "$term" > /dev/null 2>&1 || { echo "terminal not found: $term" >&2; exit 1; }
+fi
+
+run() { if ((dry)); then printf 'DRY-RUN:'; printf ' %q' "$@"; printf '\n'; else "$@"; fi; }
+bg() { if ((dry)); then run "$@"; else setsid "$@" > /dev/null 2>&1 < /dev/null & fi; }
+
+((delay > 0 && !dry)) && sleep "$delay"
+
+case $term in
+  konsole)
+    tabs=$(mktemp "$(csr_state_dir)/.tabs.XXXXXX")
+    n=0
+    for id in "${ids[@]}"; do
+      n=$((n + 1))
+      printf 'title: claude %d ;; command: %s %s\n' "$n" "$tab" "$id" >> "$tabs"
+    done
+    if ((dry)); then cat "$tabs"; fi
+    bg konsole --tabs-from-file "$tabs"
+    ((dry)) || sleep 5
+    rm -f "$tabs"
+    ;;
+  gnome-terminal)
+    first=1
+    for id in "${ids[@]}"; do
+      if ((first)); then run gnome-terminal --window -- "$tab" "$id"; first=0
+      else run gnome-terminal --tab -- "$tab" "$id"; fi
+      ((dry)) || sleep 0.5
+    done
+    ;;
+  xfce4-terminal)
+    args=()
+    for id in "${ids[@]}"; do args+=(--tab --command "$tab $id"); done
+    bg xfce4-terminal "${args[@]}"
+    ;;
+  kitty)
+    sess=$(mktemp "$(csr_state_dir)/.kitty.XXXXXX")
+    first=1
+    for id in "${ids[@]}"; do
+      ((first)) || echo 'new_tab' >> "$sess"
+      first=0
+      printf 'launch %s %s\n' "$tab" "$id" >> "$sess"
+    done
+    if ((dry)); then cat "$sess"; fi
+    bg kitty --session "$sess"
+    ((dry)) || sleep 5
+    rm -f "$sess"
+    ;;
+  tmux)
+    first=1
+    for id in "${ids[@]}"; do
+      if ((first)); then run tmux new-session -d -s claude "$tab" "$id"; first=0
+      else run tmux new-window -t claude "$tab" "$id"; fi
+    done
+    echo "attach with: tmux attach -t claude" >&2
+    ;;
+  custom)
+    read -r -a prefix <<< "$CLAUDE_RESTORE_TERMINAL_CMD"
+    for id in "${ids[@]}"; do bg "${prefix[@]}" "$tab" "$id"; done
+    ;;
+  wezterm)
+    for id in "${ids[@]}"; do bg wezterm start -- "$tab" "$id"; done
+    ;;
+  alacritty | foot | xterm | x-terminal-emulator)
+    for id in "${ids[@]}"; do bg "$term" -e "$tab" "$id"; done
+    ;;
+  *)
+    echo "unsupported terminal: $term (use CLAUDE_RESTORE_TERMINAL_CMD)" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Saves the currently running interactive Claude Code sessions (id + cwd).
+# Safe to run as often as you like (e.g. from a timer).
+set -u
+umask 077
+here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# shellcheck source=claude-session-lib.sh
+. "$here/claude-session-lib.sh"
+
+state_dir=$(csr_state_dir)
+state=$(csr_state_file)
+mkdir -p "$state_dir" && chmod 700 "$state_dir" || exit 1
+
+tmp=$(mktemp "$state_dir/.save.XXXXXX") || exit 1
+trap 'rm -f "$tmp"' EXIT
+
+# oldest first, one line per session id
+csr_running_sessions | sort -n | awk -F'\t' '!seen[$2]++ {print $2 "\t" $3}' > "$tmp"
+
+# Never replace a good list with an empty one (e.g. right after login, or
+# when Claude is closed on purpose before shutting down).
+[[ -s $tmp ]] || exit 0
+
+if [[ -f $state ]] && ! cmp -s "$tmp" "$state"; then
+  cp -p "$state" "$state.prev"
+fi
+chmod 600 "$tmp"
+mv -f "$tmp" "$state"
