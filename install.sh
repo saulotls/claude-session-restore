@@ -22,7 +22,7 @@ prefix=${PREFIX:-$HOME/.local}
 libdir="$prefix/lib/claude-session-restore"
 bindir="$prefix/bin"
 for p in "$libdir" "$bindir"; do
-  [[ $p =~ ^/[A-Za-z0-9_./+@%-]+$ ]] || { echo "unsupported characters in path: $p" >&2; exit 1; }
+  [[ $p =~ ^/[A-Za-z0-9_./+@-]+$ ]] || { echo "unsupported characters in path: $p" >&2; exit 1; }
 done
 
 mkdir -p "$libdir" "$bindir"
@@ -54,7 +54,7 @@ if ((timer)); then
     mkdir -p "$ud"
     {
       printf '[Unit]\nDescription=Save running Claude Code sessions\n\n[Service]\nType=oneshot\n'
-      if [[ -n ${CLAUDE_CONFIG_DIR:-} && $CLAUDE_CONFIG_DIR =~ ^/[A-Za-z0-9_./+@%-]+$ ]]; then
+      if [[ -n ${CLAUDE_CONFIG_DIR:-} && $CLAUDE_CONFIG_DIR =~ ^/[A-Za-z0-9_./+@-]+$ ]]; then
         printf 'Environment=CLAUDE_CONFIG_DIR=%s\n' "$CLAUDE_CONFIG_DIR"
       fi
       printf 'ExecStart=%s/claude-save-session\n' "$bindir"

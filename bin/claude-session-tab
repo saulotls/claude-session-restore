@@ -8,7 +8,13 @@ here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 
 # Drop runtime variables inherited from a parent Claude session; otherwise this
 # one is treated as a child session and does not save its transcript.
-while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep "^CLAUDE_CODE_")
+# Authentication/provider settings are kept: they are user configuration, not session state.
+while IFS= read -r v; do
+  case $v in
+    CLAUDE_CODE_OAUTH_TOKEN | CLAUDE_CODE_USE_BEDROCK | CLAUDE_CODE_USE_VERTEX | CLAUDE_CODE_USE_FOUNDRY) continue ;;
+  esac
+  unset "$v"
+done < <(compgen -e | grep "^CLAUDE_CODE_")
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1
 
 id=${1:-}

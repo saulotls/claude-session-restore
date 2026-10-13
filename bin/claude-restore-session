@@ -26,7 +26,7 @@ done
 tab="$here/claude-session-tab"
 # The tab launcher path ends up inside terminal command lines; keep it free of
 # whitespace and shell/terminal metacharacters instead of trying to escape it.
-if [[ ! $tab =~ ^/[A-Za-z0-9_./+@%-]+$ ]]; then
+if [[ ! $tab =~ ^/[A-Za-z0-9_./+@-]+$ ]]; then
   echo "install path contains unsupported characters: $tab" >&2
   exit 1
 fi
@@ -60,7 +60,7 @@ pick_terminal() {
   return 1
 }
 term=$(pick_terminal) || { echo "no supported terminal found (use --terminal or CLAUDE_RESTORE_TERMINAL_CMD)" >&2; exit 1; }
-if [[ $term != custom ]] && ! [[ $term =~ ^[A-Za-z0-9._-]+$ ]]; then echo "invalid terminal name" >&2; exit 2; fi
+if [[ $term != custom ]] && ! [[ $term =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then echo "invalid terminal name" >&2; exit 2; fi
 if [[ $term != custom && $term != tmux ]]; then
   command -v "$term" > /dev/null 2>&1 || { echo "terminal not found: $term" >&2; exit 1; }
 fi

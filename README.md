@@ -48,7 +48,7 @@ Tested on KDE Konsole. The other terminals are covered by command-construction t
 - No network access, no root, no `eval`. Files are created with mode `0600` (state dir `0700`).
 - It reads one field (`sessionId`, plus `kind`) from `~/.claude/sessions/<pid>.json`. It never reads transcripts, credentials, or the `.key` files next to them.
 - The saved list is treated as untrusted input on restore: session ids must be UUIDs, directories must be absolute paths without control characters, and nothing from the list is ever interpolated into a shell command — ids are passed as plain arguments to a fixed launcher (`claude-session-tab`), which looks the directory up itself.
-- Install paths are restricted to `[A-Za-z0-9_./+@%-]` because they are embedded in terminal command lines.
+- Install paths are restricted to `[A-Za-z0-9_./+@-]` because they are embedded in terminal command lines.
 - Run the checks yourself: `shellcheck -x -P SCRIPTDIR bin/* *.sh tests/run.sh && bash tests/run.sh` (tests use a fake `$HOME`, fake processes and fake terminals).
 
 ## Português
